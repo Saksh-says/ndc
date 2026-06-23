@@ -1,0 +1,183 @@
+Assuming:
+
+Firewall (LAN) : 192.168.10.5
+Client-1       : 192.168.10.25
+Client-2       : 192.168.10.35
+Network        : 192.168.10.0/24
+WAN Interface  : ens160
+LAN Interface  : ens224
+DNS Server     : <your actual DNS IP>
+
+Replace <DNS_IP> with the DNS you found using:
+
+cat /etc/resolv.conf
+
+
+
+1. Enable IP Forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+Verify:
+
+cat /proc/sys/net/ipv4/ip_forward
+
+Output should be:
+
+
+2. Flush Existing Rules
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t nat -X
+
+
+3. Configure NAT (Internet Sharing)
+iptables -t nat -A POSTROUTING \
+-s 192.168.10.0/24 \
+-o ens160 \
+-j MASQUERADE
+
+Verify:
+
+iptables -t nat -L -n
+
+
+4. Create Custom Chain
+iptables -N CDAC
+
+Verify:
+
+iptables -L
+
+
+5. Allow DNS Queries
+
+Replace <DNS_IP> with your DNS server.
+
+Example if DNS = 192.168.1.1
+
+iptables -A CDAC \
+-p udp \
+-s 192.168.10.0/24 \
+-d <DNS_IP> \
+--dport 53 \
+-j ACCEPT
+
+DNS Replies:
+
+iptables -A CDAC \
+-p udp \
+-s <DNS_IP> \
+-d 192.168.10.0/24 \
+--sport 53 \
+-j ACCEPT
+
+
+6. Allow Google For All Clients
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.0/24 \
+-d www.google.com \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+
+
+7. Allow Client-1 Websites
+RedHat
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.25 \
+-d www.redhat.com \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+Microsoft
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.25 \
+-d www.microsoft.com \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+Oracle
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.25 \
+-d www.oracle.com \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+
+
+8. Allow Client-2 Websites
+HDFC
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.35 \
+-d www.hdfc.bank.in \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+SBI
+iptables -A CDAC \
+-p tcp \
+-s 192.168.10.35 \
+-d onlinesbi.sbi.bank.in \
+--dport 443 \
+-m conntrack \
+--ctstate NEW \
+-j ACCEPT
+
+
+9. Allow Return Traffic
+iptables -A CDAC \
+-m conntrack \
+--ctstate ESTABLISHED,RELATED \
+-j ACCEPT
+
+
+10. Attach CDAC Chain To FORWARD
+iptables -A FORWARD -j CDAC
+
+
+11. Block Everything Else
+iptables -A FORWARD -j REJECT
+
+
+12. Verify Rules
+iptables -L CDAC -n
+iptables -L FORWARD -n
+iptables -t nat -L -n
+
+
+13. Client Configuration
+Client-1
+IP Address : 192.168.10.25
+Netmask    : 255.255.255.0
+Gateway    : 192.168.10.5
+DNS        : <DNS_IP>
+Client-2
+IP Address : 192.168.10.35
+Netmask    : 255.255.255.0
+Gateway    : 192.168.10.5
+DNS        : <DNS_IP>
+Quick Check Commands
+
+On clients:
+
+ping 192.168.10.5
+dig google.com
+firefox https://www.google.com
+firefox https://www.redhat.com
+
+(Client-1 only)
+
+firefox https://www.hdfc.bank.in
+
+(Client-2 only)
