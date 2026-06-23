@@ -1,129 +1,119 @@
-ipset icmp/ssh/http block :
-iptables -I INPUT 1 -m set --match-set batman src -j DROP 
-iptables -I INPUT 2 -p icmp --icmp-type=echo-request -j SET --add-set batman src
+Echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
+On client’s machine put nameserver 192.168.72.20 in /etc/resolv.conf
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------
+Fail2ban
 
-Iptables :-
+Machine a :
 
-DMZ
+1. Install + start + enable 
+sudo yum install epel-release -y
+sudo yum install fail2ban -y
+sudo systemctl status fail2ban
+cd /etc/fail2ban/
+ ls
+ sudo vim jail.conf
+ cp jail.conf jail.local 
+ cd jail.d/
+  ls
+ sudo vim sshd.local
 
-sudo iptables -L
+[sshd]
+enabled=true
+maxretry=5
+bantime=1h
+findtime=3m
+bantime.increment=true
+bantime.factor=2
 
-sudo iptables -t nat -L
 
-sudo iptables -t nat -A POSTROUTING -s 192.168.25.0/24 -o ens160 -j MASQUERADE
+sudo fail2ban-client status
+ sudo systemctl restart fail2ban
+
+On other machine:
  
- sudo iptables -t nat -A POSTROUTING -s 192.168.35.0/24 -o ens160 -j MASQUERADE 
+Ping machine a
 
-`````````````````````````````````````````````````````````````````````````````````
+Machine a: 
 
-Enable Forwarding :-
-
- cat /proc/sys/net/ipv4/ip_forward
-
- sudo iptables -I FORWARD 1 -p udp -d 192.168.72.20 --dport=53 -j ACCEPT
-
-sudo iptables -I FORWARD 1 -p udp -s 192.168.72.20 --sport=53 -j ACCEPT
-
-
-`````````````````````````````````````````````````````````````````````````````````
-New chain for DMZ , Private :-
-
-  sudo iptables -N dmz_chain
-
- sudo iptables -N lan_chain 
-
- sudo iptables -I FORWARD 3 -j dmz_chain 
-
-sudo iptables -I FORWARD 4 -j lan_chain 
-
-sudo iptables -A dmz_chain -p tcp -s 192.168.35.0/24 -m conntrack --ctstate NEW -j ACCEPT
-
-sudo iptables -A dmz_chain -p tcp -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-sudo iptables -A dmz_chain -j RETURN
-
-sudo iptables -A lan_chain -p tcp -s 192.168.25.0/24 -d www.google.com --dport=443 -m conntrack --ctstate NEW -j ACCEPT
-
-sudo iptables -A lan_chain -p tcp -s 192.168.25.0/24 -d www.cdac.in --dport=443 -m conntrack --ctstate NEW -j ACCEPT
-
-sudo iptables -A lan_chain -p tcp -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-sudo iptables -A lan_chain -j RETURN
+ hostname -I
+ sudo fail2ban-client status sshd
+ sudo fail2ban-client get sshd banip
+ sudo fail2ban-client get sshd banip --with-time
 
 
 
-````````````````````````````````````````````````````````````````````````````````````````````````````````
-Port Forwarding For Website Access :-
-
-sudo iptables -t nat -A PREROUTING -p tcp -i ens160 --dport=80 -j DNAT --to-destination 192.168.35.10:80 
-
-sudo iptables -I dmz_chain 3 -p tcp -d 192.168.35.10 --dport=80 -m conntrack --ctstate NEW -j ACCEPT
 
 
-Note: on machine 192.168.35.10, web server should be running
-Sudo apt/dnf install httpd/apache2
-Sudo vim /var/www/html/index.html
-
-Option1: sudo ufw allow 80
-Option2: sudo firewall-cmd --add-service=80 --permanent
-                 Sudo firewall-cmd --reload
-
-Browse 192.168.74.227- should show web page of server which in running on 192.168.35.10
 
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------
-Ipset :-
 
-Chai 
 
-ipset create chai hash:ip timeout 60
-iptables -I INPUT 1 -m set --match-set chai src -j DROP 
-iptables -I INPUT 2 -p icmp --icmp-type echo-request -j SET --add-set chai src 
-iptables -I INPUT 3 -p tcp --dport=22 -j SET --add-set chai src 
-iptables -I INPUT 4 -p tcp --dport=80 -j SET --add-set chai src 
 
-iptables -I INPUT 2 -p icmp --icmp-type echo-request -m length --length 156: -j SET --add-set chai src
 
-iptables -R INPUT 2 -p icmp --icmp-type echo-request -m limit --limit 10/s -j SET --add-set chai src
 
-ipset del chai 192.168.74.74
 
-iptables -D INPUT 1
-iptables destroy chai
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-Snort :-
+
+
+
+
+
+
+
+
+Snort 
 
 Cd  /etc/snort
 Sudo vim snort.conf
- --> 	ipvar HOME_NET 192.168.35.0/24
- --> 	ipvar EXTERNAL_NET !$HOME_NET
- -->	var RULE_PATH /etc/snort/rules
- -->	var SO_RULE_PATH /etc/snort/so_rules
- -->	var PREPROC_RULE_PATH /etc/snort/preproc_rules
- -->	var WHITE_LIST_PATH /etc/snort/rules
- -->	var BLACK_LIST_PATH /etc/snort/rules
+45  ipvar HOME_NET 192.168.35.0/24
+48  ipvar EXTERNAL_NET !$HOME_NET
+104 var RULE_PATH /etc/snort/rules
+105 var SO_RULE_PATH /etc/snort/so_rules
+106 var PREPROC_RULE_PATH /etc/snort/preproc_rules
+113 var WHITE_LIST_PATH /etc/snort/rules
+114 var BLACK_LIST_PATH /etc/snort/rules
 
-(make sure to enable this in file)
+:wq
+
+
 
 Cd  /etc/snort/rules
 Sudo vim local.rules
 
-alert icmp any any -> any any (msg:"Test ping";sid:1000013;)
-alert udp any any -> any 53 (msg:”LAN searching facebook”;content:”facebook”;nocase;sid:952145;)
+Alert icmp any any -> any any (msg:"Test ping";sid:1000013;)
+
+Alert udp any any -> any 53 (msg:”LAN searching facebook”;content:”facebook”;nocase;sid:952145;)
+
 alert tcp $EXTERNAL_NET any -> 192.168.74.227 22 (msg:"Test SSH";sid:1000003;)
+
 alert icmp any any -> 192.168.74.227 any (msg:"Test big_data ping";dsize:>128;sid:1000004;)
+
 alert icmp any any -> 192.168.74.227 any (msg:"Ping of Death";detection_filter:track by_src,count 20,seconds 60;sid:1000044;)
+
 alert tcp any any -> 192.168.74.227 80 (msg:"flood web flow";flags:S;detection_filter:track by_src,count 20,seconds 60;sid:1000033;)
 
-for logs :-
+:wq
+
+
+
+
 sudo snort -A console -i ens160 -c /etc/snort/snort.conf -l /var/log/snort/
-				(OR)
-sudo cat /var/log/snort/alert.fast
-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+NOW TRY TO ATTACK FROM ATTACKER MACHINE
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 NGINX
 
@@ -137,11 +127,14 @@ Sudo systemctl status nginx
 Cd /etc/nginx/
 Sudo vim nginx.conf
 
- 41     server {
+41     server {
  42         listen       80;
  43         #listen       [::]:80;
  44         #server_name  _;
  45         #root         /usr/share/nginx/html;
+
+
+
 
 
 
@@ -172,32 +165,86 @@ Browser:	192.168.74.227/cdac
 
 Note: ON client web server should be run
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-nginx Loadbalancing + Reverse Proxy :-
 
- Loadbalancing
+DMZ
 
- 36     include /etc/nginx/conf.d/*.conf;
- 37     upstream batman {
- 38         server 192.168.25.10;
- 39         server 192.168.25.20;
- 40     }
- 41     server {
- 42         listen       80;
- 43 #        listen       [::]:80;
- 44 #        server_name  _;
- 45 #        root         /usr/share/nginx/html;
- 46 
- 47         # Load configuration files for the default server block.
- 48         include /etc/nginx/default.d/*.conf;
- 49 
- 50         error_page 404 /404.html;
- 51         location = /404.html {
- 52         }
- 53         location = / {
- 54                 proxy_pass http://batman/;
- 55         }
- 56         location = /cdac {
- 57                 proxy_pass http://192.168.25.10/;
+sudo iptables -L
+
+sudo iptables -t nat -L
+
+sudo iptables -t nat -A POSTROUTING -s 192.168.25.0/24 -o ens160 -j MASQUERADE
+ 
+ sudo iptables -t nat -A POSTROUTING -s 192.168.35.0/24 -o ens160 -j MASQUERADE 
+
+ cat /proc/sys/net/ipv4/ip_forward
+
+ sudo iptables -I FORWARD 1 -p udp -d 192.168.72.20 --dport=53 -j ACCEPT
+
+sudo iptables -I FORWARD 1 -p udp -s 192.168.72.20 --sport=53 -j ACCEPT
+
+  sudo iptables -N dmz_chain
+
+ sudo iptables -N lan_chain 
+
+ sudo iptables -I FORWARD 3 -j dmz_chain 
+
+sudo iptables -I FORWARD 4 -j lan_chain 
+
+sudo iptables -A dmz_chain -p tcp -s 192.168.35.0/24 -m conntrack --ctstate NEW -j ACCEPT
+
+sudo iptables -A dmz_chain -p tcp -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+sudo iptables -A dmz_chain -j RETURN
+
+sudo iptables -A lan_chain -p tcp -s 192.168.25.0/24 -d www.google.com --dport=443 -m conntrack --ctstate NEW -j ACCEPT
+
+sudo iptables -A lan_chain -p tcp -s 192.168.25.0/24 -d www.cdac.in --dport=443 -m conntrack --ctstate NEW -j ACCEPT
+
+sudo iptables -A lan_chain -p tcp -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+sudo iptables -A lan_chain -j RETURN
+
+
+
+
+
+sudo iptables -t nat -A PREROUTING -p tcp -i ens160 --dport=80 -j DNAT --to-destination 192.168.35.10:80 
+
+sudo iptables -I dmz_chain 3 -p tcp -d 192.168.35.10 --dport=80 -m conntrack --ctstate NEW -j ACCEPT
+
+
+Note: on machine 192.168.35.10, web server should be running
+Sudo apt/dnf install httpd/apache2
+Sudo vim /var/www/html/index.html
+
+Option1: sudo ufw allow 80
+Option2: sudo firewall-cmd --add-service=80 --permanent
+                 Sudo firewall-cmd --reload
+
+Browse 192.168.74.227- should show web page of server which in running on 192.168.35.10
+
+
+
+ipset
+Chai 
+
+ipset create chai hash:ip timeout 60
+iptables -I INPUT 1 -m set --match-set chai src -j DROP 
+iptables -I INPUT 2 -p icmp --icmp-type echo-request -j SET --add-set chai src 
+iptables -I INPUT 3 -p tcp --dport=22 -j SET --add-set chai src 
+iptables -I INPUT 4 -p tcp --dport=80 -j SET --add-set chai src 
+
+iptables -I INPUT 2 -p icmp --icmp-type echo-request -m length --length 156: -j SET --add-set chai src
+
+iptables -R INPUT 2 -p icmp --icmp-type echo-request -m limit --limit 10/s -j SET --add-set chai src
+
+
+# to check ip 
+ipset -L
+
+#delete ip from set 
+iptables -D INPUT 1
+
+iptables destroy chai
 
